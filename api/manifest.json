@@ -1,0 +1,16 @@
+{
+    "name": "api",
+    "version": "0.0.1",
+    "description": "Basic, general API",
+    "engines": {
+        "arangodb": "^3.0.0"
+    },
+    "author": "jayrbolton",
+    "license": "MIT",
+    "main": "main.js",
+    "scripts": {
+        "setup": "scripts/setup.js",
+        "teardown": "scripts/teardown.js"
+    },
+    "tests": "test/**/*.js"
+}
