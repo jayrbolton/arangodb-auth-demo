@@ -8,7 +8,8 @@ const documentCollections = [
 ]
 const edgeCollections = [
   'contains',
-  'hasPerm'
+  'hasPerm',
+  'updatedTo'
 ]
 
 for (const localName of documentCollections) {
