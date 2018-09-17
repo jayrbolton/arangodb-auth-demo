@@ -11,6 +11,7 @@ const hasPerm = module.context.collection('hasPerm')
 const contains = module.context.collection('contains')
 const users = module.context.collection('users')
 const objects = module.context.collection('objects')
+const updatedTo = module.context.collection('updatedTo')
 
 const router = createRouter()
 module.exports = router
@@ -229,7 +230,7 @@ router.post('/:wsKey/objects', restrict(), function (req, res) {
   .response(201, responseSchema, 'The created object.')
   .summary('Create a new object')
 
-// POST workspaces/:wsKey/objects/:objKey
+// PUT workspaces/:wsKey/objects/:objKey
 // Edit an object, which creates a new copy with a new version
 router.put('/:wsKey/objects/:objKey', restrict(), function (req, res) {
   const wsID = `${workspaces.name()}/${req.pathParams.wsKey}`
@@ -244,14 +245,16 @@ router.put('/:wsKey/objects/:objKey', restrict(), function (req, res) {
     res.throw(400, `Workspace ${wsID} does not contain object ${objID}`)
   }
   const oldObj = objects.document(objID)
-  // Create a new object with new `contains` edges to the same workspace
   const newObj = {
     name: req.body.name,
     version: oldObj.version + 1
   }
   const newMeta = objects.save(newObj)
   Object.assign(newObj, newMeta)
+  // Create a new object with new `contains` edges to the same workspace
   contains.save({_from: wsID, _to: newObj._id})
+  // Create an `updatedTo` edge between the old object and the new object
+  updatedTo.save({_from: objID, _to: newObj._id})
   res.send(newObj)
 })
   .body(joi.object({name: joi.string().required()}).required(), 'The object to update')

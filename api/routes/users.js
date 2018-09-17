@@ -3,7 +3,6 @@ const httpError = require('http-errors')
 const status = require('statuses')
 const errors = require('@arangodb').errors
 const createRouter = require('@arangodb/foxx/router')
-const User = require('../models/user')
 const restrict = require('../lib/restrict')
 
 const users = module.context.collection('users')
@@ -25,6 +24,12 @@ const ARANGO_NOT_FOUND = errors.ERROR_ARANGO_DOCUMENT_NOT_FOUND.code
 const router = createRouter()
 module.exports = router
 
+// Schema of a user object returned by any endpoint
+const returnSchema = joi.object({
+  email: joi.string(),
+  _id: joi.string()
+})
+
 router.tag('user')
 
 // GET /basic/users
@@ -32,7 +37,7 @@ router.tag('user')
 router.get(restrict('sysadmin'), function (req, res) {
   res.send(users.all())
 }, 'list')
-  .response([User], 'A list of users.')
+  .response([returnSchema], 'A list of users.')
   .summary('List all users.')
   .description('Retrieves a list of all orgs.')
 
@@ -71,6 +76,6 @@ router.get(':key', restrict('sysadmin'), function (req, res) {
   res.send(user)
 }, 'detail')
   .pathParam('key', keySchema)
-  .response(User, 'The user.')
+  .response(returnSchema, 'The user.')
   .summary('Fetch a user.')
   .description('Retrieves a user by its key.')

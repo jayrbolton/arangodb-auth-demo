@@ -10,6 +10,7 @@ const restrict = require('../lib/restrict')
 const contains = module.context.collection('contains')
 const workspaces = module.context.collection('workspaces')
 const hasPerm = module.context.collection('hasPerm')
+const updatedTo = module.context.collection('updatedTo')
 
 // const ARANGO_DUPLICATE = errors.ERROR_ARANGO_UNIQUE_CONSTRAINT_VIOLATED.code
 // const HTTP_CONFLICT = status('conflict')
@@ -28,41 +29,59 @@ const responseSchema = joi.object({
   _rev: joi.string()
 })
 
+router.get('/:objKey/provenance', restrict(), function (req, res) {
+  // Get the provenance chain of an object
+  // Given an object, find all other objects connected to it via the `updatedTo` edge
+  // const query = (aql` `)
+  res.send([])
+})
+  .summary('Get the provenance chain of all other objects that have a previous version to the given object')
+
 // GET objects
 // Get all accessible objects
 router.get(restrict(), function (req, res) {
   // If a user is signed in, then additionally find all objects for private workspaces they can view/edit
   // If a user is not signed in, then we just return all objects for all public workspaces
-  const u = req.user
+  // - Traverse over every accessible workspace
+  //   - Traverse over every object in the workspace
+  //   - Traverse to all other objects linked with `updatedTo`
+  // Query that gets all objects (plus provenance chain) for a workspace
+  const objQuery = (`
+    FOR obj IN 1..1 OUTBOUND ws._id ${contains.name()}
+      FOR _obj IN 0..100 INBOUND obj._id ${updatedTo.name()}
+        LIMIT 100
+        RETURN {_id: _obj._id, name: _obj.name, version: _obj.version || 0}
+  `)
   let query
   if (req.user) {
-    query = (aql`
+    query = (`
       LET viewableIDs = (
-        FOR perm IN ${hasPerm}
-          FILTER perm._from == ${u._id} && perm.name == "canView"
+        FOR perm IN ${hasPerm.name()}
+          FILTER perm._from == @userID && perm.name == "canView"
           RETURN perm._to
       )
       LET editableIDs = (
-        FOR perm IN ${hasPerm}
-          FILTER perm._from == ${u._id} && perm.name == "canEdit"
+        FOR perm IN ${hasPerm.name()}
+          FILTER perm._from == @userID && perm.name == "canEdit"
           RETURN perm._to
       )
-      FOR ws IN ${workspaces}
+      FOR ws IN ${workspaces.name()}
         FILTER ws.isPublic || ws._id IN viewableIDs || ws._id IN editableIDs
-        FOR obj IN 1..1 OUTBOUND ws._id ${contains}
-          LIMIT 100
-          RETURN {_id: obj._id, name: obj.name, version: obj.version || 0}
+        ${objQuery}
     `)
   } else {
     query = (aql`
-      FOR ws IN ${workspaces}
+      FOR ws IN ${workspaces.name()}
         FILTER ws.isPublic
-        FOR obj IN 1..1 OUTBOUND ws._id ${contains}
-          LIMIT 100
-          RETURN {_id: obj._id, name: obj.name, version: obj.version || 0}
+        ${objQuery}
     `)
   }
-  const results = db._query(query).toArray()
+  const results = db._query({
+    query: query,
+    bindVars: {
+      userID: req.user._id
+    }
+  }).toArray()
   res.send(results)
 })
   .response(joi.array(responseSchema), 'Workspace objects.')
