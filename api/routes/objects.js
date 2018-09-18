@@ -1,8 +1,5 @@
-const {db, aql} = require('@arangodb')
+const {db} = require('@arangodb')
 const joi = require('joi')
-// const httpError = require('http-errors')
-// const status = require('statuses')
-// const errors = require('@arangodb').errors
 const createRouter = require('@arangodb/foxx/router')
 const restrict = require('../lib/restrict')
 
@@ -11,12 +8,6 @@ const contains = module.context.collection('contains')
 const workspaces = module.context.collection('workspaces')
 const hasPerm = module.context.collection('hasPerm')
 const updatedTo = module.context.collection('updatedTo')
-
-// const ARANGO_DUPLICATE = errors.ERROR_ARANGO_UNIQUE_CONSTRAINT_VIOLATED.code
-// const HTTP_CONFLICT = status('conflict')
-// const ARANGO_NOT_FOUND = errors.ERROR_ARANGO_DOCUMENT_NOT_FOUND.code
-// const ARANGO_CONFLICT = errors.ERROR_ARANGO_CONFLICT.code
-// const HTTP_NOT_FOUND = status('not found')
 
 const router = createRouter()
 module.exports = router
@@ -48,12 +39,13 @@ router.get(restrict(), function (req, res) {
   // Query that gets all objects (plus provenance chain) for a workspace
   const objQuery = (`
     FOR obj IN 1..1 OUTBOUND ws._id ${contains.name()}
-      FOR _obj IN 0..100 INBOUND obj._id ${updatedTo.name()}
+      FOR subObj IN 0..100 INBOUND obj._id ${updatedTo.name()}
         LIMIT 100
-        RETURN {_id: _obj._id, name: _obj.name, version: _obj.version || 0}
+        RETURN subObj
   `)
   let query
   if (req.user) {
+    // The query should include public workspaces, plus all viewable and editable workspaces
     query = (`
       LET viewableIDs = (
         FOR perm IN ${hasPerm.name()}
@@ -70,7 +62,8 @@ router.get(restrict(), function (req, res) {
         ${objQuery}
     `)
   } else {
-    query = (aql`
+    // The query only needs to include public workspaces
+    query = (`
       FOR ws IN ${workspaces.name()}
         FILTER ws.isPublic
         ${objQuery}

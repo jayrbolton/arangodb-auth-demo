@@ -29,16 +29,14 @@ const responseSchema = joi.object({
 // Create a workspace
 router.post(restrict(), function (req, res) {
   const workspace = req.body
-  console.log('workspace!', workspace)
   // `meta` is any extra data that we get back from the db after saving
   const meta = workspaces.save(workspace)
   Object.assign(workspace, meta)
-  const perms = hasPerm.save({
+  hasPerm.save({
     _from: req.user._id,
     _to: workspace._id,
     name: 'canEdit'
   })
-  console.log('new hasPerm:', perms)
   res.status(201)
   res.send(workspace)
 })
@@ -123,12 +121,11 @@ router.post('/:key/viewer', restrict(), function (req, res) {
   const ws = workspaces.document(id)
   const email = req.body
   const userID = users.firstExample({email})._id
-  const perms = hasPerm.save({
+  hasPerm.save({
     _from: userID,
     _to: ws._id,
     name: 'canView'
   })
-  console.log('new hasPerm:', perms)
   res.send(ws)
 })
   .body(joi.string().required(), 'The new viewer\'s email address.')
@@ -144,12 +141,11 @@ router.post('/:key/editor', restrict(), function (req, res) {
   const ws = workspaces.document(id)
   const email = req.body
   const userID = users.firstExample({email})._id
-  const perms = hasPerm.save({
+  hasPerm.save({
     _from: userID,
     _to: ws._id,
     name: 'canEdit'
   })
-  console.log('new hasPerm:', perms)
   res.send(ws)
 })
   .body(joi.string().required(), 'The new editor\'s email address.')
@@ -174,12 +170,11 @@ router.post('/:key/copy', restrict(), function (req, res) {
   `)
   db._query(query)
   // Insert a `canEdit` edge between the user and the new workspace
-  const edge = hasPerm.save({
+  hasPerm.save({
     _from: req.user._id,
     _to: newWs._id,
     name: 'canEdit'
   })
-  console.log('new hasPerm:', edge)
   res.send(newWs)
 })
   .summary('Copy a workspace.')
@@ -218,11 +213,10 @@ router.post('/:wsKey/objects', restrict(), function (req, res) {
   const meta = objects.save(object)
   Object.assign(object, meta)
   // Add a `contains` edge from the workspace to the object
-  const edge = contains.save({
+  contains.save({
     _from: wsID,
     _to: object._id
   })
-  console.log('contains edge:', edge)
   res.status(201)
   res.send(object)
 })
@@ -261,3 +255,20 @@ router.put('/:wsKey/objects/:objKey', restrict(), function (req, res) {
   .response(responseSchema, 'The updated object')
   .summary('Edit an object (creating a new copy).')
   .description('Must have edit permissions on the workspace for the object.')
+
+router.delete('/:wsKey/objects/:objKey', restrict(), function (req, res) {
+  const wsID = `${workspaces.name()}/${req.pathParams.wsKey}`
+  if (!checkPermission(req.user, ['canEdit'], wsID)) {
+    res.throw(403, 'Cannot edit workspace ' + wsID)
+  }
+  const objID = `${objects.name()}/${req.pathParams.objKey}`
+  const keys = contains.byExample({_from: wsID, _to: objID})
+    .toArray()
+    .map(x => x._key)
+  contains.removeByKeys(keys)
+  res.send({removed: keys})
+  // Delete any `contains` edges from the workspace to this object
+})
+  .summary('Remove objects from a workspace.')
+  .description('Note that this does not delete any data, but rather un-links all objects from a given workspace so they are not viewable or editable via that workspace.')
+  .response(joi.object({removed: joi.array(joi.string())}))
